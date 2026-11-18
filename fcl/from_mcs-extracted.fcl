@@ -5,6 +5,10 @@ physics.analyzers.EventNtuple.trk.fits : [ @local::Ext ]
 physics.analyzers.EventNtuple.trk.fillTrkDtDt : false
 physics.analyzers.EventNtuple.FitType : KinematicLine
 physics.analyzers.EventNtuple.subruns.genEventCount.include : true
-physics.analyzers.EventNtuple.subruns.cosmicLivetime.include : true
 
 services.GeometryService.inputFile: "Production/JobConfig/cosmic/geom_cosmic_extracted.txt"
+
+# Track-CRV association of the line fits, with truth: <trk>crv, <trk>crvxings, <trk>crvcands and their mc branches
+physics.EventNtuplePath : [ @sequence::EventNtuple.PathExt, @sequence::TrkCrvMatchNoFieldMCPath ]
+physics.analyzers.EventNtuple.trk.fits[0].trkCrvMatchTags : [ "TrkCrvMatchLineNtuple" ]
+physics.analyzers.EventNtuple.trk.fits[0].trkCrvMatchMCTags : [ "TrkCrvMatchLineNtupleMC" ]

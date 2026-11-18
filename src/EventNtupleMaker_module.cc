@@ -18,6 +18,8 @@
 #include "Offline/RecoDataProducts/inc/KalSeed.hh"
 #include "Offline/RecoDataProducts/inc/KalSeedAssns.hh"
 #include "Offline/RecoDataProducts/inc/KalSeedDtDt.hh"
+#include "Offline/RecoDataProducts/inc/TrkCrvMatch.hh"
+#include "Offline/MCDataProducts/inc/TrkCrvMatchMC.hh"
 #include "Offline/RecoDataProducts/inc/CaloCluster.hh"
 #include "Offline/RecoDataProducts/inc/CaloHit.hh"
 #include "Offline/RecoDataProducts/inc/CaloRecoDigi.hh"
@@ -157,6 +159,8 @@ namespace mu2e {
         fhicl::Atom<std::string> input{Name("input"), Comment("KalSeedCollection input tag")};
         fhicl::Atom<std::string> branchname{Name("branchname"), Comment("Name of output branch")};
         fhicl::Atom<std::string> trkDtDtTag{Name("trkDtDtTag"), Comment("Input tag for KalSeedDtDtCollection")};
+        fhicl::Sequence<std::string> trkCrvMatchTags{Name("trkCrvMatchTags"), Comment("TrkCrvMatchCollections covering the KalSeeds behind input (one per KalSeedCollection); empty: no <branchname>crv* branches"), std::vector<std::string>{}};
+        fhicl::Sequence<std::string> trkCrvMatchMCTags{Name("trkCrvMatchMCTags"), Comment("TrkCrvMatchMCCollections, one per entry of trkCrvMatchTags in the same order; empty: no <branchname>crv*mc branches"), std::vector<std::string>{}};
         fhicl::Atom<std::string> trkGroupTag{Name("trkGroupTag"), Comment("Input tag for KalSeedClusterCollection (from TrackMatching) used to fill the id and rank leaves; empty to disable"), ""};
         fhicl::Atom<bool> fill{Name("fill"), Comment("Set false to skip this branch entirely (no collection reads, no output branches)")};
         fhicl::Sequence<std::string> mvaTags{Name("mvaTags"), Comment("Input tags of the MVAResultCollections (one result per track, e.g. TrkQual or TrkPID) to store for this fit"), std::vector<std::string>{}};
@@ -189,6 +193,7 @@ namespace mu2e {
           Comment("Global enable for hit-level branches; per-branch options.fillHits also required")};
         fhicl::Atom<bool> fillHitCalibs{Name("fillHitCalibs"), Comment("Fill hit calibration branches")};
         fhicl::Atom<bool> fillTrkDtDt{Name("fillTrkDtDt"), Comment("Fill TrkDtDt branches")};
+        fhicl::Atom<bool> fillTrkCrv{Name("fillTrkCrv"), Comment("Fill the track-CRV association branches of fits with trkCrvMatchTags"), true};
         // per-branch configurations
         fhicl::Sequence<fhicl::Table<TrkFitConfig>> fits{Name("fits"), Comment("KalSeed collections to write into a single track branch")};
         // tracker MC sub-config
@@ -313,17 +318,20 @@ namespace mu2e {
         fhicl::Atom<bool>          keepUnclusteredPulses {Name("keepUnclusteredPulses"), Comment("If false, crvpulses stores only pulses assigned to CRV coincidence clusters"), false};
         fhicl::Atom<bool>          fillDigis             {Name("fillDigis"),             Comment("Fill CRV digi branch")};
         fhicl::Atom<art::InputTag> digisTag       {Name("digisTag"),        Comment("Tag for CrvDigi collection")};
-        // CRV MC truth planes. Each plane names a CRV sector; its position and
-        // orientation (the detector-facing face and the perpendicular axis) are
-        // taken from the GeometryService, so no coordinates or axis integers live
-        // in fhicl.
+        // CRV MC truth planes. A plane either names a CRV sector, and its position
+        // and orientation (the detector-facing face and the perpendicular axis) are
+        // taken from the GeometryService, or gives a fixed axis and coordinate, for
+        // a plane where the loaded geometry has no sector (e.g. the nominal CRV-T
+        // height in a geometry without the nominal CRV-T).
         struct CrvPlaneConfig {
           using Name=fhicl::Name;
           using Comment=fhicl::Comment;
-          fhicl::Atom<std::string> sector    {Name("sector"),     Comment("CRV sector name (e.g. \"T\", \"R\", \"L\", \"T1\", \"EX\"); the truth plane is placed at this sector's detector-facing scintillator face, with position and orientation read from the GeometryService")};
+          fhicl::OptionalAtom<std::string> sector{Name("sector"), Comment("CRV sector name (e.g. \"T\", \"R\", \"L\", \"T1\", \"EX\"); the truth plane is placed at this sector's detector-facing scintillator face, with position and orientation read from the GeometryService. Give either sector, or axis and coordinate")};
+          fhicl::OptionalAtom<int>         axis{Name("axis"), Comment("Fixed plane: the axis perpendicular to the plane (0=x, 1=y, 2=z); give together with coordinate, instead of sector")};
+          fhicl::OptionalAtom<double>      coordinate{Name("coordinate"), Comment("Fixed plane: its coordinate along axis, in mm, Mu2e frame; give together with axis, instead of sector")};
           fhicl::Atom<std::string> branchName{Name("branchName"), Comment("Branch-name suffix for this plane; branch is crvcoincsmcplane_<branchName> (or crvcoincsmcplane for an empty string)"), ""};
         };
-        fhicl::Sequence<fhicl::Table<CrvPlaneConfig>> planes{Name("planes"), Comment("CRV MC truth planes: one entry per CRV sector whose trajectory crossings should be recorded")};
+        fhicl::Sequence<fhicl::Table<CrvPlaneConfig>> planes{Name("planes"), Comment("CRV MC truth planes: one entry per plane (a CRV sector, or a fixed axis and coordinate) whose trajectory crossings should be recorded")};
         fhicl::OptionalAtom<art::InputTag> inferenceTag{Name("inferenceTag"), Comment("Tag for CrvInference Assns (art::Assns<KalSeed,CrvCoincidenceCluster,MVAResult>); omit to disable")};
         // MC sub-config (requires mc.fill also be true)
         struct MCConfig {
@@ -343,7 +351,7 @@ namespace mu2e {
         using Comment=fhicl::Comment;
 
         fhicl::Atom<bool> include{Name("include"), Comment("True/false to include this quantity or not (master switch)")};
-        fhicl::Atom<art::InputTag> inputTag{Name("inputTag"), Comment("InputTag for subrun quantity")};
+        fhicl::Atom<art::InputTag> inputTag{Name("inputTag"), Comment("InputTag for subrun quantity (cosmicLivetime: empty to find it by type)")};
         fhicl::Atom<bool> fillNtuple{Name("fillNtuple"), Comment("True/false to add this quantity to the ntuple")};
         fhicl::Atom<bool> fillTotalsHistogram{Name("fillTotalsHistogram"), Comment("True/false to make a totals histogram for this quantity")};
       };
@@ -441,6 +449,9 @@ namespace mu2e {
         float rank = -1; // fit consistency normalised to sum to 1 over the cluster
       };
       std::vector<std::map<KalSeedPtr, TrkGroup>> _allTrkGroups;
+      // track-CRV association of each fit: the TrkCrvMatch (and its truth) of every KalSeed, found by Ptr
+      std::vector<std::map<KalSeedPtr, std::pair<const TrkCrvMatch*, const TrkCrvMatchMC*>>> _allTrkCrvs;
+      art::ProductID _crvCoincPid; // collection the crvcoincs branch is filled from, for the candidate indices
       // track branches (outputs)
       std::map<TrkFitBranchIndex, std::vector<TrkInfo>> _allTIs;
       std::map<TrkFitBranchIndex, std::vector<std::vector<TrkSegInfo>>> _allTSIs;
@@ -449,6 +460,12 @@ namespace mu2e {
       std::map<TrkFitBranchIndex, std::vector<std::vector<KinematicLineInfo>>> _allKLIs;
       std::map<TrkFitBranchIndex, std::vector<TrkCaloHitInfo>> _allTCHIs;
       std::map<TrkFitBranchIndex, std::vector<TrkDtDtInfo>> _allTDtDtIs;
+      std::map<TrkFitBranchIndex, std::vector<TrkCrvInfo>> _allTCrvIs;
+      std::map<TrkFitBranchIndex, std::vector<std::vector<TrkCrvXingInfo>>> _allTCrvXIs;
+      std::map<TrkFitBranchIndex, std::vector<std::vector<TrkCrvCandInfo>>> _allTCrvCIs;
+      std::map<TrkFitBranchIndex, std::vector<std::vector<TrkCrvCandInfoMC>>> _allTCrvCMCIs;
+      std::map<TrkFitBranchIndex, std::vector<std::vector<TrkCrvXingInfoMC>>> _allTCrvXMCIs;
+      std::map<TrkFitBranchIndex, std::vector<std::vector<TrkCrvTrueXingInfoMC>>> _allTCrvTXMCIs;
       // quality branches (inputs)
       std::vector<std::vector<art::Handle<RecoQualCollection> > > _allRQCHs;
       std::vector<std::vector<art::Handle<MVAResultCollection> >> _allMVACHs;
@@ -588,6 +605,9 @@ namespace mu2e {
       // Also gates tracker MC and CRV MC.
       bool fillEventMC() const { return _conf.mc().fill(); }
 
+      // Cosmic livetime is MC-only: gated by the event-level MC flag as well as its own switch
+      bool fillCosmicLivetime() const { return _conf.subruns().cosmicLivetime().include() && fillEventMC(); }
+
       // Tracker MC: both the global event MC gate and the tracker MC gate must
       // be true, plus the per-branch flag.
       bool fillTrkMC(const TrkFitOptConfig& opt) const {
@@ -597,6 +617,16 @@ namespace mu2e {
       // TrkDtDt: the global flag, plus a DtDt collection configured for this fit (none exists for e.g. online tracks)
       bool fillTrkDtDt(TrkFitBranchIndex i_trk_fit_branch) const {
         return _conf.trk().fillTrkDtDt() && !_allTrkFitBranches.at(i_trk_fit_branch).trkDtDtTag().empty();
+      }
+
+      // Track-CRV association: the global flag, plus TrkCrvMatch collections configured for this fit
+      bool fillTrkCrv(TrkFitBranchIndex i_trk_fit_branch) const {
+        return _conf.trk().fillTrkCrv() && !_allTrkFitBranches.at(i_trk_fit_branch).trkCrvMatchTags().empty();
+      }
+      // its truth: tracker MC for this fit, plus TrkCrvMatchMC collections
+      bool fillTrkCrvMC(TrkFitBranchIndex i_trk_fit_branch) const {
+        auto const& cfg = _allTrkFitBranches.at(i_trk_fit_branch);
+        return fillTrkCrv(i_trk_fit_branch) && fillTrkMC(cfg.options()) && !cfg.trkCrvMatchMCTags().empty();
       }
 
       // Track grouping (id and rank leaves): filled when a KalSeedCluster collection is configured for this fit
@@ -778,6 +808,12 @@ namespace mu2e {
       _allCHIs[i_trk_fit_branch]      = {};
       _allKLIs[i_trk_fit_branch]      = {};
       _allTDtDtIs[i_trk_fit_branch]   = {};
+      _allTCrvIs[i_trk_fit_branch]    = {};
+      _allTCrvXIs[i_trk_fit_branch]   = {};
+      _allTCrvCIs[i_trk_fit_branch]   = {};
+      _allTCrvCMCIs[i_trk_fit_branch] = {};
+      _allTCrvXMCIs[i_trk_fit_branch] = {};
+      _allTCrvTXMCIs[i_trk_fit_branch] = {};
       _allMCVDInfos[i_trk_fit_branch] = {};
       _allTCHIs[i_trk_fit_branch]     = {};
       _allMCTIs[i_trk_fit_branch]     = {};
@@ -816,7 +852,7 @@ namespace mu2e {
     _ntuple=tfs->make<TTree>("ntuple","Mu2e Event Ntuple");
     _hVersion = tfs->make<TH1I>("version", "version number",3,0,3);
     _hVersion->GetXaxis()->SetBinLabel(1, "major"); _hVersion->SetBinContent(1, 6);
-    _hVersion->GetXaxis()->SetBinLabel(2, "minor"); _hVersion->SetBinContent(2, 16);
+    _hVersion->GetXaxis()->SetBinLabel(2, "minor"); _hVersion->SetBinContent(2, 17);
     _hVersion->GetXaxis()->SetBinLabel(3, "patch"); _hVersion->SetBinContent(3, 0);
     // MVA results configured with a model version are recorded in trkqual_metadata
     size_t nMVAModels = 0;
@@ -864,6 +900,18 @@ namespace mu2e {
         if(_ftype == KinematicLine) _ntuple->Branch((branch+"segpars_kl.").c_str(),&_allKLIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
         if(fillTrkDtDt(i_trk_fit_branch)) {
           _ntuple->Branch((branch+"dtdt.").c_str(),&_allTDtDtIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
+        }
+        if(fillTrkCrv(i_trk_fit_branch)) {
+          if(i_trkFitConfig.trkCrvMatchMCTags().size() > 0 && i_trkFitConfig.trkCrvMatchMCTags().size() != i_trkFitConfig.trkCrvMatchTags().size())
+            throw cet::exception("EventNtuple") << "branch " << branch << ": trkCrvMatchMCTags must have one entry per trkCrvMatchTags entry";
+          _ntuple->Branch((branch+"crv.").c_str(),&_allTCrvIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
+          _ntuple->Branch((branch+"crvxings.").c_str(),&_allTCrvXIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
+          _ntuple->Branch((branch+"crvcands.").c_str(),&_allTCrvCIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
+          if(fillTrkCrvMC(i_trk_fit_branch)) {
+            _ntuple->Branch((branch+"crvcandsmc.").c_str(),&_allTCrvCMCIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
+            _ntuple->Branch((branch+"crvxingsmc.").c_str(),&_allTCrvXMCIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
+            _ntuple->Branch((branch+"crvtruexingsmc.").c_str(),&_allTCrvTXMCIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
+          }
         }
 
         // TrkCaloHit: currently only 1
@@ -1038,7 +1086,7 @@ namespace mu2e {
         _subrunNtuple->Branch("procEventCount", &_procEventCount, _buffsize, _splitlevel);
       }
 
-      if (_conf.subruns().cosmicLivetime().include() && _conf.subruns().cosmicLivetime().fillNtuple()) {
+      if (fillCosmicLivetime() && _conf.subruns().cosmicLivetime().fillNtuple()) {
         _subrunNtuple->Branch("cosmicLivetime", &_cosmicLivetime, _buffsize, _splitlevel);
       }
 
@@ -1050,7 +1098,7 @@ namespace mu2e {
       if (_conf.subruns().procEventCount().include() && _conf.subruns().procEventCount().fillTotalsHistogram()) {
         _hProcEventCount = tfs->make<TH1I>("n_proc_events", "total number of processed events", 1,0,1);
       }
-      if (_conf.subruns().cosmicLivetime().include() && _conf.subruns().cosmicLivetime().fillTotalsHistogram()) {
+      if (fillCosmicLivetime() && _conf.subruns().cosmicLivetime().fillTotalsHistogram()) {
         _hCosmicLivetime = tfs->make<TH1F>("cosmic_livetime", "total cosmic livetime [sec]", 1,0,1);
       }
 
@@ -1083,12 +1131,31 @@ namespace mu2e {
       }
     }
 
-    if (_conf.subruns().cosmicLivetime().include()) {
+    if (fillCosmicLivetime()) {
+      _cosmicLivetime = -1.0; // reset so a subrun without a CosmicLivetime doesn't inherit the previous value
+      // The producer depends on how the sample was made (e.g. "generate" for extracted, "CosmicResampler:mixed" for mixed),
+      // so an empty inputTag takes the single CosmicLivetime found in the subrun
+      const art::InputTag& tag = _conf.subruns().cosmicLivetime().inputTag();
       art::Handle<CosmicLivetime> cosmicLivetimeHandle;
-      subrun.getByLabel<CosmicLivetime>(_conf.subruns().cosmicLivetime().inputTag(), cosmicLivetimeHandle);
-      if(cosmicLivetimeHandle.isValid()) _cosmicLivetime = cosmicLivetimeHandle->liveTime();
-      if (_conf.subruns().makeTotalsHistograms() && _conf.subruns().cosmicLivetime().fillTotalsHistogram()) {
-        _hCosmicLivetime->Fill(0.0, _cosmicLivetime);
+      if (tag.empty()) {
+        std::vector<art::Handle<CosmicLivetime>> handles = subrun.getMany<CosmicLivetime>();
+        if (handles.size() > 1) {
+          cet::exception ex("EventNtuple");
+          ex << "Found " << handles.size() << " CosmicLivetime products in subrun " << subrun.id() << ", set subruns.cosmicLivetime.inputTag to one of:";
+          for (const auto& handle : handles) {
+            ex << " " << handle.provenance()->moduleLabel() << ":" << handle.provenance()->productInstanceName();
+          }
+          throw ex;
+        }
+        if (handles.size() == 1) cosmicLivetimeHandle = handles.front();
+      } else {
+        subrun.getByLabel<CosmicLivetime>(tag, cosmicLivetimeHandle);
+      }
+      if (cosmicLivetimeHandle.isValid()) {
+        _cosmicLivetime = cosmicLivetimeHandle->liveTime();
+        if (_conf.subruns().makeTotalsHistograms() && _conf.subruns().cosmicLivetime().fillTotalsHistogram()) {
+          _hCosmicLivetime->Fill(0.0, _cosmicLivetime);
+        }
       }
     }
 
@@ -1105,12 +1172,13 @@ namespace mu2e {
   }
 
   void EventNtupleMaker::resolveCrvPlanes() {
-    // Resolve each configured CRV truth plane (named by sector) into a plane
-    // coordinate and perpendicular axis, reading both from the GeometryService.
-    // The plane sits at the sector's detector-facing scintillator face: the inner
-    // face (toward the detector axis) of the innermost scintillator layer. This is
-    // the first CRV surface a track extrapolated outward from the detector reaches,
-    // matching the historical hard-coded default.
+    // Resolve each configured CRV truth plane into a plane coordinate and
+    // perpendicular axis. A fixed plane (axis and coordinate) is used as given.
+    // A plane named by sector reads both from the GeometryService: it sits at the
+    // sector's detector-facing scintillator face, the inner face (toward the
+    // detector axis) of the innermost scintillator layer. This is the first CRV
+    // surface a track extrapolated outward from the detector reaches, matching the
+    // historical hard-coded default.
     GeomHandle<CosmicRayShield> CRS;
     GeomHandle<DetectorSystem>  tdet;
     const CLHEP::Hep3Vector& detOrigin = tdet->getOrigin(); // detector axis, Mu2e frame
@@ -1119,7 +1187,26 @@ namespace mu2e {
     _crvPlaneCoords.clear();
     _crvPlaneAxes.clear();
     for(auto const& plane : _conf.crv().planes()) {
-      const std::string& sector = plane.sector();
+      std::string sector;
+      int         fixedAxis  = -1;
+      double      fixedCoord = 0.0;
+      const bool  hasSector  = plane.sector(sector);
+      const bool  hasAxis    = plane.axis(fixedAxis);
+      const bool  hasCoord   = plane.coordinate(fixedCoord);
+      if(hasAxis != hasCoord)
+        throw cet::exception("EventNtuple")
+          << "crv.planes: axis and coordinate must be given together (branchName \"" << plane.branchName() << "\")\n";
+      if(hasSector == hasAxis)
+        throw cet::exception("EventNtuple")
+          << "crv.planes: give either sector, or axis and coordinate (branchName \"" << plane.branchName() << "\")\n";
+      if(hasAxis) {
+        if(fixedAxis < 0 || fixedAxis > 2)
+          throw cet::exception("EventNtuple")
+            << "crv.planes: axis must be 0 (x), 1 (y) or 2 (z), not " << fixedAxis << "\n";
+        _crvPlaneCoords.push_back(fixedCoord);
+        _crvPlaneAxes.push_back(fixedAxis);
+        continue;
+      }
       // Sector names are "CRV_<sector>" (e.g. CRV_T1); match like CosmicRayShield does.
       const CRSScintillatorShield* rep = nullptr;
       for(auto const& s : shields) {
@@ -1184,6 +1271,13 @@ namespace mu2e {
     _allMVACHs.clear();
     _allKSDtDtHs.clear();
     _allTrkGroups.clear();
+    _allTrkCrvs.clear();
+    _crvCoincPid = art::ProductID();
+    if(_conf.crv().fill() && _conf.crv().fillCoincs()) {
+      art::Handle<CrvCoincidenceClusterCollection> crvh;
+      event.getByLabel(_conf.crv().coincidencesTag(), crvh);
+      if(crvh.isValid()) _crvCoincPid = crvh.id();
+    }
 
     if (_conf.trk().fill()) {
       for (TrkFitBranchIndex i_trk_fit_branch = 0; i_trk_fit_branch < _allTrkFitBranches.size(); ++i_trk_fit_branch) {
@@ -1195,6 +1289,7 @@ namespace mu2e {
           _allRQCHs.push_back({});
           _allKSDtDtHs.push_back(art::Handle<KalSeedDtDtCollection>());
           _allTrkGroups.emplace_back();
+          _allTrkCrvs.emplace_back();
           continue;
         }
         art::Handle<KalSeedPtrCollection> kalSeedPtrCollHandle;
@@ -1208,6 +1303,23 @@ namespace mu2e {
           event.getByLabel(kalSeedDtDtInputTag,kalSeedDtDtCollHandle);
         }
         _allKSDtDtHs.push_back(kalSeedDtDtCollHandle);
+
+        _allTrkCrvs.emplace_back();
+        if(fillTrkCrv(i_trk_fit_branch)) { // map every KalSeed of the matcher collections to its record
+          auto& crvmap = _allTrkCrvs.back();
+          auto const& mtags = i_trkFitConfig.trkCrvMatchTags();
+          auto const& mctags = i_trkFitConfig.trkCrvMatchMCTags();
+          bool wantMC = fillTrkCrvMC(i_trk_fit_branch);
+          for(size_t itag = 0; itag < mtags.size(); ++itag) {
+            auto const& mh = event.getValidHandle<TrkCrvMatchCollection>(art::InputTag(mtags[itag]));
+            const TrkCrvMatchMCCollection* mcs = nullptr;
+            if(wantMC) {
+              mcs = event.getValidHandle<TrkCrvMatchMCCollection>(art::InputTag(mctags.at(itag))).product();
+              if(mcs->size() != mh->size()) throw cet::exception("EventNtuple") << mctags.at(itag) << " is not parallel to " << mtags[itag];
+            }
+            for(size_t im = 0; im < mh->size(); ++im) crvmap[mh->at(im).track_] = {&mh->at(im), mcs ? &mcs->at(im) : nullptr};
+          }
+        }
 
         if(fillTrkGroup(i_trk_fit_branch)) { // if not filling, leave the map empty
           auto kalSeedClusterCollHandle = event.getValidHandle<KalSeedClusterCollection>(i_trkFitConfig.trkGroupTag());
@@ -1323,6 +1435,12 @@ namespace mu2e {
       _allKLIs.at(i_trk_fit_branch).clear();
       _allTCHIs.at(i_trk_fit_branch).clear();
       _allTDtDtIs.at(i_trk_fit_branch).clear();
+      _allTCrvIs.at(i_trk_fit_branch).clear();
+      _allTCrvXIs.at(i_trk_fit_branch).clear();
+      _allTCrvCIs.at(i_trk_fit_branch).clear();
+      _allTCrvCMCIs.at(i_trk_fit_branch).clear();
+      _allTCrvXMCIs.at(i_trk_fit_branch).clear();
+      _allTCrvTXMCIs.at(i_trk_fit_branch).clear();
 
       _allTSHIs.at(i_trk_fit_branch).clear();
       _allTSHCIs.at(i_trk_fit_branch).clear();
@@ -1816,6 +1934,17 @@ namespace mu2e {
       } else {
         throw cet::exception("EventNtuple")
           << "TrkDtDt handle at " << i_trk_fit_branch << " isn't valid!";
+      }
+    }
+
+    if(fillTrkCrv(i_trk_fit_branch)) { // one entry per track, also for tracks with no record
+      auto const& crvmap = _allTrkCrvs.at(i_trk_fit_branch);
+      auto icrv = crvmap.find(kseedptr);
+      const TrkCrvMatch* crvmatch = icrv != crvmap.end() ? icrv->second.first : nullptr;
+      _infoStructHelper.fillTrkCrvInfo(crvmatch, _crvCoincPid, _allTCrvIs.at(i_trk_fit_branch), _allTCrvXIs.at(i_trk_fit_branch), _allTCrvCIs.at(i_trk_fit_branch));
+      if(fillTrkCrvMC(i_trk_fit_branch)) {
+        const TrkCrvMatchMC* crvmc = icrv != crvmap.end() ? icrv->second.second : nullptr;
+        _infoMCStructHelper.fillTrkCrvInfoMC(crvmc, _crvCoincPid, _allTCrvCMCIs.at(i_trk_fit_branch), _allTCrvXMCIs.at(i_trk_fit_branch), _allTCrvTXMCIs.at(i_trk_fit_branch));
       }
     }
 

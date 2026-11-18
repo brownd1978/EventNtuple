@@ -29,6 +29,18 @@
 
 namespace mu2e {
 
+  namespace {
+    // id of the first simulation-stage piece of this particle, as in
+    // SimParticle::originParticle(), but stopping at a parent piece that was not kept
+    int originId(SimParticle const& sp) {
+      SimParticle const* piece = &sp;
+      while (piece->selfParent() && piece->parent().isAvailable()) {
+        piece = piece->parent().get();
+      }
+      return piece->id().asInt();
+    }
+  }
+
   InfoMCStructHelper::InfoMCStructHelper(const Config& conf) :
     _spctag(conf.spctag()), _mingood(conf.mingood()),
     _maxdt(conf.maxvddt()),
@@ -203,6 +215,14 @@ namespace mu2e {
 
         SimInfo sim_info;
         fillSimInfo(current_sim_particle, sim_info);
+        // In staged MC a particle is split into one SimParticle per stage.
+        // current_sim_particle is the first stage, so the start values above
+        // describe where the particle was created. Take the end values from
+        // current_sim_particle_ptr instead: the stage that made the track hits
+        // (generation 0) or that produced the previous generation (e.g. the
+        // muon at the point where it decayed), not the first stage, which may
+        // end at a stage boundary such as a killer volume.
+        fillSimInfoEnd(*current_sim_particle_ptr, sim_info);
         sim_info.trkrel = MCRelationship(current_sim_particle_ptr, trkprimaryptr);
         sim_info.rank = imatch;
 
@@ -283,11 +303,17 @@ namespace mu2e {
     siminfo.id = sp.id().asInt();
     if(sp.genParticle().isNonnull()) { siminfo.gen = sp.genParticle()->generatorId().id(); }
     siminfo.startCode = sp.creationCode();
-    siminfo.stopCode = sp.stoppingCode();
     siminfo.pdg = sp.pdgId();
     siminfo.time = sp.startGlobalTime();
     siminfo.mom = XYZVectorF(sp.startMomentum());
     siminfo.pos = XYZVectorF(det->toDetector(sp.startPosition()));
+    fillSimInfoEnd(sp, siminfo);
+  }
+
+  void InfoMCStructHelper::fillSimInfoEnd(const SimParticle& sp, SimInfo& siminfo) {
+    GeomHandle<DetectorSystem> det;
+    siminfo.endid = sp.id().asInt();
+    siminfo.stopCode = sp.stoppingCode();
     siminfo.endpos = XYZVectorF(det->toDetector(sp.endPosition()));
     siminfo.endmom = XYZVectorF(sp.endMomentum());
   }
@@ -562,6 +588,7 @@ namespace mu2e {
           mcsi.mom = mcstep.momentum();
           mcsi.pos = spos;
           mcsi.simid = mcstep.simParticle()->id().asInt();
+          mcsi.originid = originId(*mcstep.simParticle());
           mcsi.pdg = mcstep.simParticle()->pdgId();
           mcsi.startCode = mcstep.simParticle()->creationCode();
           mcsi.stopCode = mcstep.simParticle()->stoppingCode();
@@ -603,10 +630,61 @@ namespace mu2e {
       mcstepinfo.pos = XYZVectorF(det->toDetector(mcstep.position()));
       const auto& simParticle = mcstep.simParticle();
       mcstepinfo.simid = simParticle->id().asInt();
+      mcstepinfo.originid = originId(*simParticle);
       mcstepinfo.pdg = simParticle->pdgId();
       mcstepinfo.startCode = simParticle->creationCode();
       mcstepinfo.stopCode = simParticle->stoppingCode();
       mcstepinfos.emplace_back(mcstepinfo);
+    }
+  }
+
+  void InfoMCStructHelper::fillTrkCrvInfoMC(const TrkCrvMatchMC* mc, const art::ProductID& crvPid, std::vector<std::vector<TrkCrvCandInfoMC>>& cands,
+                                            std::vector<std::vector<TrkCrvXingInfoMC>>& xings, std::vector<std::vector<TrkCrvTrueXingInfoMC>>& trues) {
+    cands.emplace_back();
+    xings.emplace_back();
+    trues.emplace_back();
+    if(mc == nullptr) return;
+    for(auto const& c : mc->cands_) {
+      TrkCrvCandInfoMC ci;
+      ci.hasmc = c.hasMC_;
+      ci.rel = c.rel_.relationship();
+      ci.rem = c.rel_.removal();
+      ci.edep_same = c.edepSame_;
+      ci.edep_related = c.edepRelated_;
+      ci.edep_total = c.edepTotal_;
+      cands.back().push_back(ci);
+    }
+    for(size_t ir = 0; ir < mc->recoXingTruth_.size(); ++ir) {
+      TrkCrvXingInfoMC xi;
+      xi.truexing = mc->recoXingTruth_[ir];
+      if(ir < mc->recoXingNeighbor_.size()) xi.nbrxing = mc->recoXingNeighbor_[ir];
+      xings.back().push_back(xi);
+    }
+    // the matcher's cluster collection, from any candidate of the reco record
+    art::ProductID clusterPid;
+    if(mc->match_.isNonnull() && mc->match_.isAvailable() && !mc->match_->cands_.empty()) clusterPid = mc->match_->cands_.front().cluster_.id();
+    for(auto const& x : mc->xings_) {
+      TrkCrvTrueXingInfoMC ti;
+      ti.sid = x.sid_.id().id();
+      ti.sector = x.sector_;
+      ti.rel = x.rel_.relationship();
+      ti.rem = x.rel_.removal();
+      if(x.sim_.isNonnull() && x.sim_.isAvailable()) ti.pdg = x.sim_->pdgId();
+      ti.geom = x.geom_;
+      ti.pos = XYZVectorF(x.pos_.X(), x.pos_.Y(), x.pos_.Z());
+      ti.dir = XYZVectorF(x.dir_.X(), x.dir_.Y(), x.dir_.Z());
+      ti.time = x.time_;
+      ti.mom = x.mom_;
+      ti.dedgeu = x.dEdgeU_;
+      ti.dedgev = x.dEdgeV_;
+      ti.hasdeposits = mc->hasDeposits_;
+      ti.edep = x.edep_;
+      ti.nlayers = x.nLayers_;
+      ti.deppos = XYZVectorF(x.depPos_.X(), x.depPos_.Y(), x.depPos_.Z());
+      ti.crvcoinc = (x.trueCluster_ >= 0 && crvPid.isValid() && clusterPid == crvPid) ? x.trueCluster_ : -1;
+      ti.cand = x.trueCand_;
+      ti.recoxing = x.recoXing_;
+      trues.back().push_back(ti);
     }
   }
 }
