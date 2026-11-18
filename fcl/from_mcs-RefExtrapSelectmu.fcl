@@ -59,6 +59,7 @@ physics.analyzers : {
     }
   }
 }
+physics.analyzers.ENRefmu.subruns.cosmicLivetime.include: true
 
 physics.Refmu : [ ENRefmu ]
 
