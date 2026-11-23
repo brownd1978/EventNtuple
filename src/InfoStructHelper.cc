@@ -135,6 +135,8 @@ namespace mu2e {
       tsi.time = kinter.time();
       tsi.momerr = kinter.momerr();
       tsi.inbounds = kinter.inBounds();
+      auto const& kkinter = kinter.intersection();
+      tsi.inbfrac = kkinter.hascov_ ? kkinter.inbfrac_ : -1.0;
       tsi.gap = kinter.gap();
       tsi.sid = kinter.surfid_.id().id();
       tsi.sindex = kinter.surfid_.index();

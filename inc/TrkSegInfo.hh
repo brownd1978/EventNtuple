@@ -17,7 +17,8 @@ namespace mu2e
     double time = 0.0; // time of the fit at this Surface
     float dmom; // scalar momentum change in positive time direction
     float momerr = -1000;  // projected error on the scalar momentum
-    bool inbounds = false; // was the intersection within the (literal) surface bounds?
+    bool inbounds = false; // was the intersection within the (literal) surface bounds? false for a near miss (out of bounds, recorded as inactive material)
+    float inbfrac = -1.0; // fraction of the track position covariance, projected onto the surface, that lies inside the surface bounds; -1 if not computed
     bool gap = false; // was the intersection in a piecewise trajectory gap?
     int sid = SurfaceIdEnum::unknown; // SurfaceId of the intersected surface, see Offline/KinKalGeom/inc/SurfaceId.hh for definitions
     int sindex = 0; // index to the intersected surface (for multi-surface elements like StoppingTarget)
