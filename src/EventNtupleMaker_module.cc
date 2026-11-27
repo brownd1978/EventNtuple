@@ -455,6 +455,8 @@ namespace mu2e {
       // track branches (outputs)
       std::map<TrkFitBranchIndex, std::vector<TrkInfo>> _allTIs;
       std::map<TrkFitBranchIndex, std::vector<std::vector<TrkSegInfo>>> _allTSIs;
+      std::map<TrkFitBranchIndex, std::vector<std::vector<TrkSTArcInfo>>> _allSTAIs; // stopping target material transit arcs
+      std::map<art::Ptr<KalSeed>, const TrkMaterialTransit*> _stTransits; // ST material transits associated with LoopHelix KalSeeds
       std::map<TrkFitBranchIndex, std::vector<std::vector<LoopHelixInfo>>> _allLHIs;
       std::map<TrkFitBranchIndex, std::vector<std::vector<CentralHelixInfo>>> _allCHIs;
       std::map<TrkFitBranchIndex, std::vector<std::vector<KinematicLineInfo>>> _allKLIs;
@@ -804,6 +806,7 @@ namespace mu2e {
 
       _allTIs[i_trk_fit_branch]       = {};
       _allTSIs[i_trk_fit_branch]      = {};
+      _allSTAIs[i_trk_fit_branch]     = {};
       _allLHIs[i_trk_fit_branch]      = {};
       _allCHIs[i_trk_fit_branch]      = {};
       _allKLIs[i_trk_fit_branch]      = {};
@@ -894,6 +897,7 @@ namespace mu2e {
         std::string branch = i_trkFitConfig.branchname();
         _ntuple->Branch((branch+".").c_str(),&_allTIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
         _ntuple->Branch((branch+"segs.").c_str(),&_allTSIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
+        _ntuple->Branch((branch+"starcs.").c_str(),&_allSTAIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
         // add traj-specific branches
         if(_ftype == LoopHelix)    _ntuple->Branch((branch+"segpars_lh.").c_str(),&_allLHIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
         if(_ftype == CentralHelix) _ntuple->Branch((branch+"segpars_ch.").c_str(),&_allCHIs.at(i_trk_fit_branch),_buffsize,_splitlevel);
@@ -1279,6 +1283,14 @@ namespace mu2e {
       if(crvh.isValid()) _crvCoincPid = crvh.id();
     }
 
+    // collect the ST material transits (LoopHelixFit/RegrowLoopHelix STTransitSettings) from all modules
+    _stTransits.clear();
+    if (_conf.trk().fill()) {
+      for(auto const& stah : event.getMany<KalMaterialTransitAssns>()){
+        for(auto const& assn : *stah) _stTransits[assn.first] = &*assn.second;
+      }
+    }
+
     if (_conf.trk().fill()) {
       for (TrkFitBranchIndex i_trk_fit_branch = 0; i_trk_fit_branch < _allTrkFitBranches.size(); ++i_trk_fit_branch) {
         TrkFitConfig i_trkFitConfig = _allTrkFitBranches.at(i_trk_fit_branch);
@@ -1430,6 +1442,7 @@ namespace mu2e {
 
       _allTIs.at(i_trk_fit_branch).clear();
       _allTSIs.at(i_trk_fit_branch).clear();
+      _allSTAIs.at(i_trk_fit_branch).clear();
       _allLHIs.at(i_trk_fit_branch).clear();
       _allCHIs.at(i_trk_fit_branch).clear();
       _allKLIs.at(i_trk_fit_branch).clear();
@@ -1913,6 +1926,14 @@ namespace mu2e {
       _allTIs.at(i_trk_fit_branch).back().rank = group->second.rank;
     }
     _infoStructHelper.fillTrkSegInfo(kseed,_allTSIs.at(i_trk_fit_branch));
+    { // ST material transit associated with a LoopHelix KalSeed, if any
+      const TrkMaterialTransit* sttransit = nullptr;
+      if(kseed.loopHelixFit()){
+        auto itt = _stTransits.find(kseedptr);
+        if(itt != _stTransits.end()) sttransit = itt->second;
+      }
+      _infoStructHelper.fillTrkSTArcInfo(sttransit,_allSTAIs.at(i_trk_fit_branch));
+    }
     if(_ftype == LoopHelix    && kseed.loopHelixFit())    _infoStructHelper.fillLoopHelixInfo(kseed,_allLHIs.at(i_trk_fit_branch));
     if(_ftype == CentralHelix && kseed.centralHelixFit()) _infoStructHelper.fillCentralHelixInfo(kseed,_allCHIs.at(i_trk_fit_branch));
     if(_ftype == KinematicLine && kseed.kinematicLineFit()) _infoStructHelper.fillKinematicLineInfo(kseed,_allKLIs.at(i_trk_fit_branch));

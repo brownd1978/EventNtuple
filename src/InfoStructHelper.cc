@@ -136,7 +136,13 @@ namespace mu2e {
       tsi.momerr = kinter.momerr();
       tsi.inbounds = kinter.inBounds();
       auto const& kkinter = kinter.intersection();
-      tsi.inbfrac = kkinter.hascov_ ? kkinter.inbfrac_ : -1.0;
+      if(kkinter.norm_.Mag2() > 0.0) tsi.ndot = kkinter.norm_.Unit().Dot(kinter.momentum3().Unit());
+      if(kkinter.hascov_){
+        tsi.inbfrac = kkinter.inbfrac_;
+        // a non-positive diagonal (non-positive-definite projected covariance) is recorded as -1, the same as no covariance
+        if(kkinter.pcov_(0,0) > 0.0) tsi.sigu = sqrt(kkinter.pcov_(0,0));
+        if(kkinter.pcov_(1,1) > 0.0) tsi.sigv = sqrt(kkinter.pcov_(1,1));
+      }
       tsi.gap = kinter.gap();
       tsi.sid = kinter.surfid_.id().id();
       tsi.sindex = kinter.surfid_.index();
@@ -809,5 +815,26 @@ namespace mu2e {
       if(ci.geom) ++info.ngeom;
       cands.back().push_back(ci);
     }
+  }
+
+  // stopping target material transit arcs (see TrkSTArcInfo.hh); a null transit gives an empty entry
+  void InfoStructHelper::fillTrkSTArcInfo(const TrkMaterialTransit* transit, std::vector<std::vector<TrkSTArcInfo>>& all_arcs) {
+    std::vector<TrkSTArcInfo> arcs;
+    if(transit){
+      for(auto const& arc : transit->arcs_){
+        TrkSTArcInfo info;
+        info.tentry = arc.tentry_;
+        info.texit = arc.texit_;
+        info.sentry = arc.sentry_.id();
+        info.sexit = arc.sexit_.id();
+        info.vollen = arc.vollen_;
+        info.matlen = arc.matlen_;
+        info.mom = arc.mom_;
+        info.eloss = arc.eloss_;
+        info.elossvar = arc.elossvar_;
+        arcs.push_back(info);
+      }
+    }
+    all_arcs.push_back(arcs);
   }
 }

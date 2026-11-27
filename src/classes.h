@@ -10,6 +10,7 @@
 #include "EventNtuple/inc/TrkInfo.hh"
 #include "EventNtuple/inc/TrkInfoMC.hh"
 #include "EventNtuple/inc/TrkSegInfo.hh"
+#include "EventNtuple/inc/TrkSTArcInfo.hh"
 #include "EventNtuple/inc/LoopHelixInfo.hh"
 #include "EventNtuple/inc/CentralHelixInfo.hh"
 #include "EventNtuple/inc/KinematicLineInfo.hh"

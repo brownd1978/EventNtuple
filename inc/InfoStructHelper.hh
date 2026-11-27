@@ -29,6 +29,8 @@
 #include "EventNtuple/inc/HitCount.hh"
 #include "EventNtuple/inc/TrkInfo.hh"
 #include "EventNtuple/inc/TrkSegInfo.hh"
+#include "EventNtuple/inc/TrkSTArcInfo.hh"
+#include "Offline/RecoDataProducts/inc/TrkMaterialTransit.hh"
 #include "EventNtuple/inc/LoopHelixInfo.hh"
 #include "EventNtuple/inc/CentralHelixInfo.hh"
 #include "EventNtuple/inc/KinematicLineInfo.hh"
@@ -77,6 +79,7 @@ namespace mu2e {
 
     void fillTrkInfo(const KalSeed& kseed,std::vector<TrkInfo>& trkinfo);
     void fillTrkSegInfo(const KalSeed& kseed,std::vector<std::vector<TrkSegInfo>>& trkseginfos);
+    void fillTrkSTArcInfo(const TrkMaterialTransit* transit,std::vector<std::vector<TrkSTArcInfo>>& arcinfos); // null transit gives an empty entry
     void fillTrkInfoHits(const KalSeed& kseed,TrkInfo& trkinfo);
     void fillTrkInfoStraws(const KalSeed& kseed,TrkInfo& trkinfo);
     void fillLoopHelixInfo(const KalSeed& kseed, std::vector<std::vector<LoopHelixInfo>>& lhis);

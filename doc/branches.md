@@ -58,6 +58,7 @@ Within each Kalman fit element, there is a vector describing the track segment p
 | branch | structure | explanation | leaf information |
 |--------|-----------|-------------|------------------|
 | trksegs |  Vector-of-vector branch |   track fit results at particular surfaces| [see TrkSegInfo.hh](../inc/TrkSegInfo.hh)
+| trkstarcs |  Vector-of-vector branch |   stopping target material transit arcs of LoopHelix fits (filled when the fit or regrow module is configured with STTransitSettings; empty otherwise)| [see TrkSTArcInfo.hh](../inc/TrkSTArcInfo.hh)
 | trksegpars_lh |  Vector-of-vector branch |   LoopHelix track parameters at each trkseg surface (used for looping tracks)| [see LoopHelixInfo.hh](../inc/LoopHelixInfo.hh)
 | trksegpars_ch |  Vector-of-vector branch |   CentralHelix track parameters at each trkseg surface (used for field-on cosmic tracks)| [see CentralHelixInfo.hh](../inc/CentralHelixInfo.hh)
 | trksegpars_kl |  Vector-of-vector branch |   KinematicLine track parameters for each trkseg surface (used for field-off cosmics)| [see KinematicLineInfo.hh](../inc/KinematicLineInfo.hh)
